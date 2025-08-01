@@ -17,7 +17,7 @@ PASSWORD = os.getenv("PASSWORD")
 GDRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID")
 
 # Load credentials from env
-creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+creds_json = os.getenv("GOOGLE_CREDENTIALS_B64")
 creds_dict = json.loads(creds_json)
 credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/drive"])
 drive_service = build('drive', 'v3', credentials=credentials)
