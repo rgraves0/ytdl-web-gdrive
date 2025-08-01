@@ -1,51 +1,20 @@
-```html
 <!DOCTYPE html>
-<html lang="my">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ဗီဒီယိုဒေါင်းလုပ်</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 600px; margin: auto; }
-        .form-group { margin-bottom: 15px; }
-        input, select, button { padding: 10px; width: 100%; margin-top: 5px; }
-        button { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #45a049; }
-        .flash { padding: 10px; margin-bottom: 15px; border-radius: 5px; }
-        .success { background-color: #d4edda; color: #155724; }
-        .error { background-color: #f8d7da; color: #721c24; }
-        .logout { text-align: right; }
-    </style>
+    <title>YouTube Downloader</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
-        <div class="logout">
-            <a href="{{ url_for('logout') }}">ထွက်ရန်</a>
-        </div>
-        <h1>ဗီဒီယိုဒေါင်းလုပ်ရန်</h1>
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="flash {{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-        <form action="{{ url_for('download') }}" method="post">
-            <div class="form-group">
-                <label for="url">ဗီဒီယို URL:</label>
-                <input type="text" id="url" name="url" placeholder="ဥပမာ: https://www.youtube.com/watch?v=..." required>
-            </div>
-            <div class="form-group">
-                <label for="destination">သိမ်းရန်နေရာ:</label>
-                <select id="destination" name="destination" required>
-                    <option value="gdrive">Google Drive</option>
-                    <option value="onedrive">OneDrive for Business</option>
-                </select>
-            </div>
-            <button type="submit">ဒေါင်းလုပ်ရန်</button>
+        <h1>YouTube to Google Drive</h1>
+        {% if message %}
+            <div class="message">{{ message }}</div>
+        {% endif %}
+        <form method="POST">
+            <input type="text" name="url" placeholder="Enter YouTube URL" required>
+            <button type="submit">Download & Upload</button>
         </form>
     </div>
 </body>
 </html>
-```

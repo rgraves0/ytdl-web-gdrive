@@ -1,5 +1,1 @@
-__pycache__/
-*.pyc
-downloads/
-rclone.conf
-.env
+echo "downloads/" >> .gitignore

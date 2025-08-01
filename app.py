@@ -1,123 +1,69 @@
-```python
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
-import yt_dlp
-import os
-import subprocess
-import hashlib
-import json
+from flask import Flask, request, render_template, redirect, url_for, Response
 from functools import wraps
+import os
+import json
+from youtube_dl import YoutubeDL
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-here')
 
-# Flask-Login စတင်ပြင်ဆင်ခြင်း
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
+USERNAME = os.getenv("USERNAME")
+PASSWORD = os.getenv("PASSWORD")
+GDRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID")
 
-# Flask-Login အတွက် User အမျိုးအစား
-class User(UserMixin):
-    def __init__(self, id):
-        self.id = id
+# Load credentials from env
+creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON")
+creds_dict = json.loads(creds_json)
+credentials = service_account.Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/drive"])
+drive_service = build('drive', 'v3', credentials=credentials)
 
-# User ကို ပြန်လည်ဖွင့်ရန်
-@login_manager.user_loader
-def load_user(user_id):
-    return User(user_id)
+# Basic Auth
+def check_auth(username, password):
+    return username == USERNAME and password == PASSWORD
 
-# Environment မှ credentials များကို ဖတ်ရန်
-USERNAME_HASH = os.environ.get('USERNAME_HASH')
-PASSWORD_HASH = os.environ.get('PASSWORD_HASH')
-RCLONE_CONFIG = os.environ.get('RCLONE_CONFIG')
+def authenticate():
+    return Response('Could not verify your access level for that URL.\n'
+                    'You have to login with proper credentials', 401,
+                    {'WWW-Authenticate': 'Basic realm="Login Required"'})
 
-# rclone config ကို ဖိုင်ထဲသို့ ရေးရန်
-if RCLONE_CONFIG:
-    with open('/app/rclone.conf', 'w') as f:
-        f.write(RCLONE_CONFIG)
-
-# ဒေါင်းလုပ်ဖိုင်များသိမ်းရန်နေရာ
-DOWNLOAD_DIR = '/app/downloads'
-if not os.path.exists(DOWNLOAD_DIR):
-    os.makedirs(DOWNLOAD_DIR)
-
-# Admin အတွက်သာ ဝင်ခွင့်ပြုရန်
-def admin_required(f):
+def requires_auth(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if session.get('user_id') != 'admin':
-            flash('ဝင်ခွင့်မရှိပါ။', 'error')
-            return redirect(url_for('index'))
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
         return f(*args, **kwargs)
-    return decorated_function
+    return decorated
 
-@app.route('/')
-@login_required
+@app.route('/', methods=['GET', 'POST'])
+@requires_auth
 def index():
-    return render_template('index.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
+    message = ""
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        username_hash = hashlib.sha256(username.encode()).hexdigest()
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        if username_hash == USERNAME_HASH and password_hash == PASSWORD_HASH:
-            user = User('admin')
-            login_user(user)
-            session['user_id'] = 'admin'
-            return redirect(url_for('index'))
-        else:
-            flash('အသုံးပြုသူအမည် သို့မဟုတ် စကားဝှက် မမှန်ကန်ပါ။', 'error')
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    session.pop('user_id', None)
-    flash('အောင်မြင်စွာ ထွက်လိုက်ပါပြီ။', 'success')
-    return redirect(url_for('login'))
-
-@app.route('/download', methods=['POST'])
-@login_required
-@admin_required
-def download():
-    url = request.form['url']
-    destination = request.form['destination']
-    try:
+        url = request.form['url']
         ydl_opts = {
-            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-            'noplaylist': True,
+            'format': 'best',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
-        
-        # rclone ဖြင့် cloud သို့ အပ်လုပ်ရန်
-        if destination in ['gdrive', 'onedrive']:
-            rclone_cmd = [
-                'rclone', 'copy', filename,
-                f'{destination}:/Downloads/',
-                '--config', '/app/rclone.conf'
-            ]
-            result = subprocess.run(rclone_cmd, capture_output=True, text=True)
-            if result.returncode == 0:
-                flash(f'ဖိုင်ကို {destination} သို့ အပ်လုပ်ပြီးပါပြီ။', 'success')
-            else:
-                flash(f'rclone error: {result.stderr}', 'error')
-            
-            # ဒေါင်းလုပ်ထားသောဖိုင်ကို ဖျက်ရန်
-            os.remove(filename)
-        else:
-            flash('မမှန်ကန်သော destination ရွေးချယ်မှု။', 'error')
-        
-        return redirect(url_for('index'))
-    except Exception as e:
-        flash(f'ဒေါင်းလုပ်မှု မအောင်မြင်ပါ: {str(e)}', 'error')
-        return redirect(url_for('index'))
+
+        file_metadata = {
+            'name': os.path.basename(filename),
+            'parents': [GDRIVE_FOLDER_ID]
+        }
+        media = MediaFileUpload(filename, resumable=True)
+        drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+        message = f"Uploaded: {os.path.basename(filename)} to Google Drive"
+
+    return render_template('index.html', message=message)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
-```
+    app.run(host='0.0.0.0', port=5000)
